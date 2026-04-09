@@ -2,7 +2,7 @@
 
 client_id = "PLACEHOLDER_NEEDS_CONFIG_LINK"
 name = "Allergen Matrix — Food Compliance"
-application_url = "https://shopify.dev/apps/default-app-home"
+application_url = "https://shopify-allergen-matrix-production.up.railway.app"
 embedded = true
 
 [build]
@@ -16,4 +16,4 @@ api_version = "2026-07"
 scopes = "read_products,write_products"
 
 [auth]
-redirect_urls = [ "https://shopify.dev/apps/default-app-home/api/auth" ]
+redirect_urls = [ "https://shopify-allergen-matrix-production.up.railway.app/api/auth" ]
