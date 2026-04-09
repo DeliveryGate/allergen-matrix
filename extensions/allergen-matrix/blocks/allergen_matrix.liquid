@@ -1,0 +1,739 @@
+{%- comment -%}
+  Allergen Matrix Block — Shopify Theme App Extension
+  Generalised from Vanda's Kitchen production implementation.
+  Fetches allergen data from the Allergen Matrix app backend API.
+  Compliance: Natasha's Law (UK), EU FIR 1169/2011, US FALCPA (Pro).
+
+  Schema settings available:
+    - api_url: backend URL (set automatically on install)
+    - page_title: override page heading
+    - page_intro: override intro paragraph
+    - warning_message: allergen warning text
+    - beyond14_message: beyond 14 allergens text
+    - brand_color: primary brand colour
+    - show_dietary_filters: toggle dietary preference filters
+    - show_add_to_basket: toggle "Add selected to basket" feature
+{%- endcomment -%}
+
+{%- assign api_url = block.settings.api_url | default: "" -%}
+{%- assign shop_domain = shop.permanent_domain -%}
+{%- assign page_title = block.settings.page_title | default: "Allergen Guide" -%}
+{%- assign page_intro = block.settings.page_intro | default: "Use this guide to check which allergens are present in each product and filter for options that suit you." -%}
+{%- assign warning_message = block.settings.warning_message | default: "We follow strict allergen controls and clear ingredient labelling. If you have a severe allergy or multiple allergens, please contact us before ordering." -%}
+{%- assign beyond14_message = block.settings.beyond14_message | default: "If you react to ingredients beyond the 14 major allergens (for example: onion, garlic, coconut, banana, or spices), please contact us before ordering." -%}
+{%- assign brand_color = block.settings.brand_color | default: "#309B42" -%}
+{%- assign show_dietary = block.settings.show_dietary_filters | default: true -%}
+{%- assign show_add_to_basket = block.settings.show_add_to_basket | default: true -%}
+
+<div id="am-allergen-matrix" class="am-allergen-matrix" data-am-root data-shop="{{ shop_domain | escape }}" data-api-url="{{ api_url | escape }}">
+
+  <style>
+    #am-allergen-matrix {
+      --am-primary: {{ brand_color }};
+      --am-primary-light: {{ brand_color }}22;
+      --am-primary-border: {{ brand_color }}44;
+      --am-green-dark: #163b2a;
+      --am-text: #1c3f2d;
+      --am-reading-max: 1100px;
+      font-family: inherit;
+    }
+
+    .am-container { width: 100%; padding: 18px 16px 40px; box-sizing: border-box; }
+    @media (min-width: 750px) { .am-container { padding-left: 24px; padding-right: 24px; } }
+    @media (min-width: 1200px) { .am-container { padding-left: 40px; padding-right: 40px; } }
+
+    .am-header-inner { width: min(var(--am-reading-max), calc(100% - 32px)); margin: 0 auto; box-sizing: border-box; }
+
+    .am-hero { margin: 0 0 24px; text-align: center; }
+    .am-hero-h1 { font-size: clamp(1.4rem, 3vw, 2rem); font-weight: 950; color: var(--am-green-dark); margin: 0 0 10px; line-height: 1.15; }
+    .am-hero-lede { font-size: 1.05rem; line-height: 1.6; color: var(--am-text); margin: 0 auto; max-width: 700px; }
+
+    .am-card-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-bottom: 24px; }
+    @media (max-width: 749px) { .am-card-grid { grid-template-columns: 1fr; } }
+
+    .am-card { padding: 18px 20px; border-radius: 16px; border: 1px solid var(--am-primary-border); }
+    .am-card--green { background: linear-gradient(135deg, var(--am-primary-light) 0%, var(--am-primary-light) 100%); }
+    .am-card--white { background: #fff; }
+    .am-card-icon { font-size: 1.5rem; margin-bottom: 8px; }
+    .am-card-h2 { font-size: 1rem; font-weight: 900; color: var(--am-green-dark); margin: 0 0 8px; }
+    .am-card p { color: var(--am-text); font-size: 0.95rem; line-height: 1.55; margin: 6px 0; }
+    .am-card-list { padding-left: 20px; color: var(--am-text); font-size: 0.95rem; line-height: 1.6; margin: 0; }
+
+    .am-filters {
+      width: min(var(--am-reading-max), calc(100% - 32px)); margin: 18px auto;
+      padding: 20px 16px; border-radius: 18px; background: #fff;
+      border: 1px solid var(--am-primary-border); box-shadow: 0 4px 16px var(--am-primary-light);
+    }
+    .am-filters-h2 { font-size: 1.25rem; font-weight: 900; color: var(--am-green-dark); margin: 0 0 6px; }
+    .am-filters-sub { font-size: 0.97rem; color: var(--am-text); margin: 0 0 14px; line-height: 1.5; }
+
+    .am-filter-block { margin-top: 16px; padding: 16px 14px; border-radius: 16px; border: 1px solid var(--am-primary-border); }
+    .am-filter-block--green { background: linear-gradient(135deg, var(--am-primary-light) 0%, var(--am-primary-light) 100%); }
+    .am-filter-block--grey { background: rgba(0,0,0,0.03); }
+    .am-filter-title { font-weight: 900; margin-bottom: 10px; font-size: 1rem; color: var(--am-green-dark); }
+
+    .am-check-grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 12px 16px; align-items: start; }
+    @media (max-width: 990px) { .am-check-grid { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+    @media (max-width: 749px) { .am-check-grid { grid-template-columns: 1fr !important; gap: 12px 0 !important; } }
+
+    .am-check { display: inline-flex; gap: 10px; align-items: flex-start; line-height: 1.4; font-size: 0.94rem; color: var(--am-text); white-space: normal; cursor: pointer; }
+    .am-check input { margin-top: 2px; flex: 0 0 auto; cursor: pointer; accent-color: var(--am-primary); }
+    .am-tip { margin-top: 12px; font-size: 0.92rem; line-height: 1.4; color: var(--am-text); opacity: 0.95; }
+
+    .am-filter-actions {
+      margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--am-primary-border);
+      display: flex; gap: 12px; flex-wrap: wrap; align-items: center; justify-content: space-between;
+    }
+    @media (max-width: 749px) { .am-filter-actions { flex-direction: column !important; align-items: stretch !important; } }
+    .am-check--strong { font-weight: 900; color: var(--am-green-dark); }
+
+    .am-btn {
+      border-radius: 14px; padding: 11px 16px; font-weight: 900;
+      border: 1px solid rgba(0,0,0,0.12); background: #fff; cursor: pointer;
+      font-size: 0.94rem; color: var(--am-green-dark); transition: all 0.15s ease;
+    }
+    .am-btn--ghost:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+    .am-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .am-btn--primary {
+      background: var(--am-primary); color: #fff; border-color: var(--am-primary);
+      box-shadow: 0 2px 8px var(--am-primary-light);
+    }
+    .am-btn--primary:hover { filter: brightness(0.92); box-shadow: 0 4px 12px var(--am-primary-light); }
+    @media (max-width: 749px) { .am-filter-actions .am-btn { width: 100%; text-align: center; } }
+
+    .am-legend {
+      width: min(var(--am-reading-max), calc(100% - 32px)); margin: 16px auto;
+      display: flex; gap: 12px 14px; flex-wrap: wrap; align-items: center;
+      font-size: 0.92rem; padding: 14px 16px; border-radius: 16px;
+      border: 1px solid var(--am-primary-border); background: #fff;
+    }
+    .am-pill {
+      display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px;
+      border-radius: 999px; border: 1px solid rgba(0,0,0,0.12); font-weight: 900; font-size: 0.9rem;
+    }
+    .am-pill--yes { background: linear-gradient(135deg, #ffe5e5 0%, #ffd4d4 100%); border-color: rgba(220,53,69,0.3); color: #991b1b; }
+    .am-pill--no { background: linear-gradient(135deg, #d4f4dd 0%, #c1f0cd 100%); border-color: rgba(31,111,74,0.3); color: #0f5132; }
+    .am-legend-text { color: rgba(0,0,0,0.75); line-height: 1.4; }
+
+    /* Loading state */
+    .am-loading { text-align: center; padding: 48px 24px; color: var(--am-text); }
+    .am-loading-spinner { display: inline-block; width: 36px; height: 36px; border: 3px solid var(--am-primary-light); border-top-color: var(--am-primary); border-radius: 50%; animation: am-spin 0.8s linear infinite; }
+    @keyframes am-spin { to { transform: rotate(360deg); } }
+
+    /* Mobile UI */
+    .am-mobile { display: none; margin-top: 16px; }
+    @media (max-width: 899px) { .am-mobile { display: block; } }
+
+    .am-mobile-results { font-size: 0.95rem; color: var(--am-text); margin-bottom: 12px; }
+    .am-mcard {
+      padding: 14px 16px; border-radius: 16px; border: 1px solid var(--am-primary-border);
+      background: #fff; margin-bottom: 12px;
+    }
+    .am-mcard-top { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 8px; }
+    .am-mcard-select { display: flex; align-items: center; gap: 8px; font-size: 0.9rem; cursor: pointer; flex: 0 0 auto; }
+    .am-mcard-select input { accent-color: var(--am-primary); }
+    .am-mcard-title { font-weight: 900; color: var(--am-primary); font-size: 0.94rem; text-decoration: underline; text-underline-offset: 3px; }
+    .am-mcard-allergens { font-size: 0.88rem; color: #991b1b; font-weight: 600; }
+    .am-mcard-allergens--none { font-size: 0.88rem; color: #0f5132; font-weight: 600; }
+    .am-mobile-empty { text-align: center; padding: 32px; color: var(--am-text); opacity: 0.7; }
+
+    .am-cart-card--mobile { margin-top: 16px; padding: 18px; border-radius: 16px; border: 1px solid var(--am-primary-border); background: #fff; }
+    .am-cart-h2 { font-size: 1.05rem; font-weight: 900; color: var(--am-green-dark); margin: 0 0 6px; }
+    .am-cart-sub { font-size: 0.9rem; color: var(--am-text); margin: 0 0 14px; }
+    .am-cart-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid rgba(0,0,0,0.06); }
+    .am-cart-link { color: var(--am-primary); font-weight: 700; font-size: 0.92rem; text-decoration: underline; text-underline-offset: 3px; }
+    .am-cart-empty { color: var(--am-text); opacity: 0.6; font-size: 0.9rem; padding: 8px 0; }
+    .am-qty { display: flex; align-items: center; gap: 8px; }
+    .am-qty-btn { width: 28px; height: 28px; border-radius: 999px; border: 1px solid rgba(0,0,0,0.15); background: #fff; cursor: pointer; font-size: 1.1rem; display: flex; align-items: center; justify-content: center; }
+    .am-qty-val { min-width: 20px; text-align: center; font-weight: 700; }
+    .am-cart-actions { margin-top: 14px; display: flex; gap: 10px; flex-direction: column; }
+    .am-cart-status { font-size: 0.9rem; color: var(--am-text); margin-top: 10px; min-height: 1.4em; }
+
+    /* Desktop layout */
+    .am-layout { display: flex; gap: 20px; margin-top: 16px; align-items: flex-start; }
+    @media (max-width: 899px) { .am-layout { display: none; } }
+
+    .am-table-card { flex: 1; min-width: 0; }
+    .am-results-bar { font-size: 0.95rem; color: var(--am-text); margin-bottom: 10px; }
+    .am-scroll-hint { font-size: 0.85rem; color: var(--am-text); opacity: 0.7; margin-bottom: 8px; }
+
+    .am-table-wrap {
+      width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch;
+      border-radius: 18px; border: 1px solid var(--am-primary-border); background: #fff;
+      box-shadow: 0 4px 16px var(--am-primary-light);
+    }
+    .am-table { width: 100%; min-width: 860px; border-collapse: collapse; font-size: 0.92rem; table-layout: fixed; }
+    .am-table thead th {
+      position: sticky; top: 0; z-index: 3;
+      background: linear-gradient(135deg, #e8f5ee 0%, #dff0e7 100%);
+      padding: 10px 4px; font-weight: 900; font-size: 0.7rem; text-transform: uppercase;
+      letter-spacing: 0.03em; color: var(--am-green-dark); border-bottom: 2px solid var(--am-primary-border);
+      text-align: center; white-space: nowrap;
+    }
+    .am-table th:first-child, .am-table td:first-child {
+      width: 48px; min-width: 48px; max-width: 48px; text-align: center;
+      position: sticky; left: 0; z-index: 4; background: #fff;
+    }
+    .am-table thead th:first-child { background: linear-gradient(135deg, #e8f5ee 0%, #dff0e7 100%); z-index: 5; }
+    .am-table th:nth-child(2), .am-table td:nth-child(2) { min-width: 200px; width: 240px; }
+    .am-table thead th:nth-child(2) { text-align: left; padding-left: 12px; }
+    .am-table td { padding: 10px 4px; text-align: center; border-bottom: 1px solid rgba(31,111,74,0.08); vertical-align: middle; }
+    .am-table td:nth-child(2) { padding-left: 12px; text-align: left; }
+    .am-table tbody tr:hover { background: rgba(214,236,224,0.25); }
+    .am-row-hidden { display: none !important; }
+
+    .am-product-link {
+      font-weight: 900; text-decoration: underline; text-decoration-thickness: 1.5px;
+      text-underline-offset: 3px; color: var(--am-primary); line-height: 1.3;
+      font-size: 0.92rem; display: block; word-wrap: break-word; overflow-wrap: break-word;
+      white-space: normal;
+    }
+    .am-product-link:hover { filter: brightness(0.85); }
+
+    .am-yes, .am-no {
+      display: inline-flex; width: 28px; height: 28px; align-items: center; justify-content: center;
+      border-radius: 999px; border: 2px solid; font-weight: 950; font-size: 0.9rem;
+    }
+    .am-yes { background: linear-gradient(135deg, #fecaca 0%, #fca5a5 100%); border-color: #dc2626; color: #991b1b; }
+    .am-no  { background: linear-gradient(135deg, #bbf7d0 0%, #86efac 100%); border-color: #16a34a; color: #0f5132; }
+
+    .am-loadmore { display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; border-top: 1px solid var(--am-primary-border); }
+    .am-loadmore-count { font-size: 0.9rem; color: var(--am-text); opacity: 0.8; }
+
+    .am-cart-sidebar {
+      width: 280px; flex: 0 0 280px; position: sticky; top: 20px;
+      padding: 18px; border-radius: 16px; border: 1px solid var(--am-primary-border); background: #fff;
+    }
+    .am-cart-note { font-size: 0.85rem; color: var(--am-text); opacity: 0.75; margin-top: 12px; line-height: 1.4; }
+
+    .am-no-products { text-align: center; padding: 48px 24px; color: var(--am-text); opacity: 0.7; }
+    .am-error { padding: 20px; text-align: center; color: #991b1b; background: #fef2f2; border-radius: 12px; margin: 16px; }
+  </style>
+
+  <div class="am-container">
+
+    <div class="am-header-inner">
+      <header class="am-hero">
+        <h1 class="am-hero-h1">{{ page_title | escape }}</h1>
+        <p class="am-hero-lede">{{ page_intro | escape }}</p>
+      </header>
+
+      <div class="am-card-grid">
+        <div class="am-card am-card--green">
+          <div class="am-card-icon">⚠️</div>
+          <h2 class="am-card-h2">Important</h2>
+          <p>{{ warning_message | escape }}</p>
+        </div>
+        <div class="am-card am-card--white">
+          <div class="am-card-icon">🌿</div>
+          <h2 class="am-card-h2">Beyond the 14 major allergens</h2>
+          <p>{{ beyond14_message | escape }}</p>
+        </div>
+        <div class="am-card am-card--white">
+          <div class="am-card-icon">📋</div>
+          <h2 class="am-card-h2">How to use this guide</h2>
+          <ul class="am-card-list">
+            <li>Tick the allergens you <strong>must avoid</strong></li>
+            <li>Only products without those allergens will be shown</li>
+            <li>Select products and add them to your basket in one go</li>
+          </ul>
+        </div>
+        <div class="am-card am-card--green">
+          <div class="am-card-icon">💡</div>
+          <h2 class="am-card-h2">Tip</h2>
+          <p>Use the WITHOUT filters first (e.g. without sesame, without gluten) to quickly find safe options. Tick items to build a shortlist, then add them all to basket at once.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Loaded dynamically by JS -->
+    <div id="am-dynamic-content">
+      <div class="am-loading">
+        <div class="am-loading-spinner"></div>
+        <p style="margin-top:16px;">Loading allergen data…</p>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+(function () {
+  var root = document.getElementById('am-allergen-matrix');
+  if (!root) return;
+
+  var shop = root.getAttribute('data-shop') || '';
+  var apiUrl = root.getAttribute('data-api-url') || '';
+  var dynEl = document.getElementById('am-dynamic-content');
+  if (!dynEl) return;
+
+  var EU_ALLERGENS = [
+    { key: 'celery',      label: 'Celery' },
+    { key: 'gluten',      label: 'Gluten' },
+    { key: 'crustaceans', label: 'Crustaceans' },
+    { key: 'eggs',        label: 'Eggs' },
+    { key: 'fish',        label: 'Fish' },
+    { key: 'lupin',       label: 'Lupin' },
+    { key: 'milk',        label: 'Milk' },
+    { key: 'mustard',     label: 'Mustard' },
+    { key: 'molluscs',    label: 'Molluscs' },
+    { key: 'sesame',      label: 'Sesame' },
+    { key: 'soya',        label: 'Soya' },
+    { key: 'sulphites',   label: 'Sulphites' },
+    { key: 'peanuts',     label: 'Peanuts' },
+    { key: 'treenuts',    label: 'Tree Nuts' },
+  ];
+
+  var DIETARY = [
+    { key: 'vegan',      label: 'Vegan' },
+    { key: 'vegetarian', label: 'Vegetarian' },
+    { key: 'halal',      label: 'Halal' },
+    { key: 'gluten-free',label: 'Gluten-free only' },
+    { key: 'nut-free',   label: 'Nut-free only' },
+    { key: 'dairy-free', label: 'Dairy-free only' },
+  ];
+
+  function esc(s) {
+    return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+  }
+
+  function buildAllergenTokens(allergens) {
+    var tokens = '';
+    EU_ALLERGENS.forEach(function (a) {
+      if (allergens && allergens[a.key]) tokens += 'allergen-' + a.key + ',';
+    });
+    return tokens;
+  }
+
+  function buildDietaryTokens(dietary) {
+    var tokens = '';
+    DIETARY.forEach(function (d) {
+      if (dietary && dietary[d.key]) tokens += d.key + ',';
+    });
+    return tokens;
+  }
+
+  function getAllergenText(allergenTokens) {
+    var present = [];
+    EU_ALLERGENS.forEach(function (a) {
+      if (allergenTokens.indexOf('allergen-' + a.key) !== -1) present.push(a.label);
+    });
+    return present.length === 0 ? 'No major allergens listed' : present.join(', ');
+  }
+
+  function initMatrix(data) {
+    var products = data.products || {};
+    var settings = data.settings || {};
+
+    // Apply brand color from backend if not overridden in block
+    if (settings.brandColor) {
+      root.style.setProperty('--am-primary', settings.brandColor);
+      root.style.setProperty('--am-primary-light', settings.brandColor + '22');
+      root.style.setProperty('--am-primary-border', settings.brandColor + '44');
+    }
+
+    // Determine which allergens are enabled
+    var enabledKeys = settings.enabledAllergens && settings.enabledAllergens.length > 0
+      ? settings.enabledAllergens
+      : EU_ALLERGENS.map(function (a) { return a.key; });
+
+    var activeAllergens = EU_ALLERGENS.filter(function (a) { return enabledKeys.indexOf(a.key) !== -1; });
+
+    // Build product list — products is a map of { [productId]: { title, allergens, dietary, suitableFor } }
+    var productList = [];
+    Object.keys(products).forEach(function (pid) {
+      var p = products[pid];
+      // Look up the storefront product to get variant ID and URL
+      productList.push({
+        id: pid,
+        title: p.title || '',
+        allergens: p.allergens || {},
+        dietary: p.dietary || {},
+        suitableFor: p.suitableFor || '',
+        allergenTokens: buildAllergenTokens(p.allergens),
+        dietaryTokens: buildDietaryTokens(p.dietary),
+      });
+    });
+
+    if (productList.length === 0) {
+      dynEl.innerHTML = '<p class="am-no-products">No allergen data has been entered for this store yet.</p>';
+      return;
+    }
+
+    // ─── Build HTML ────────────────────────────────────────────────────────
+    var filterBlockHtml = '<div class="am-filters"><h2 class="am-filters-h2">Find food that avoids your allergens</h2><p class="am-filters-sub">Tick the allergens you <strong>must avoid</strong>. Products containing those allergens will be hidden.</p>';
+    filterBlockHtml += '<div class="am-filter-block am-filter-block--green"><div class="am-filter-title">Filter — WITHOUT these allergens (recommended)</div><div class="am-check-grid">';
+    activeAllergens.forEach(function (a) {
+      filterBlockHtml += '<label class="am-check"><input type="checkbox" class="am-without" data-allergen="' + esc(a.key) + '"><span>Without ' + esc(a.label) + '</span></label>';
+    });
+    filterBlockHtml += '</div><div class="am-tip">Tip: tick "Without sesame" + "Without gluten" to quickly find safe options.</div></div>';
+
+    filterBlockHtml += '<div class="am-filter-block am-filter-block--grey"><div class="am-filter-title">Optional dietary preferences</div><div class="am-check-grid">';
+    DIETARY.forEach(function (d) {
+      filterBlockHtml += '<label class="am-check"><input type="checkbox" class="am-tag" data-tag="' + esc(d.key) + '"><span>' + esc(d.label) + '</span></label>';
+    });
+    filterBlockHtml += '</div></div>';
+
+    filterBlockHtml += '<div class="am-filter-actions"><label class="am-check am-check--strong"><input type="checkbox" class="am-only-match" checked><span>Only show items that match my filters</span></label><button type="button" class="am-btn am-btn--ghost" data-am-clear-filters>Clear filters</button></div></div>';
+
+    var legendHtml = '<div class="am-legend"><span class="am-pill am-pill--yes">✔ Present</span><span class="am-pill am-pill--no">✘ Not listed</span><span class="am-legend-text">"Not listed" means we do not list it as an ingredient. If you have a severe allergy, please contact us before ordering.</span></div>';
+
+    // Table header
+    var theadHtml = '<thead><tr><th>Select</th><th>Product</th>';
+    activeAllergens.forEach(function (a) { theadHtml += '<th>' + esc(a.label) + '</th>'; });
+    theadHtml += '</tr></thead>';
+
+    // Table rows
+    var tbodyHtml = '<tbody data-am-tbody>';
+    productList.forEach(function (p) {
+      var combinedTags = p.allergenTokens + p.dietaryTokens;
+      var productUrl = '/products/' + p.id.replace(/^gid:\/\/shopify\/Product\//, '');
+      tbodyHtml += '<tr class="am-table-row" data-tags="' + esc(combinedTags) + '" data-title="' + esc(p.title) + '" data-url="' + esc(productUrl) + '" data-product-id="' + esc(p.id) + '">';
+      tbodyHtml += '<td><input type="checkbox" class="am-row-select" aria-label="Select ' + esc(p.title) + '"></td>';
+      tbodyHtml += '<th scope="row"><a class="am-product-link" href="' + esc(productUrl) + '">' + esc(p.title) + '</a></th>';
+      activeAllergens.forEach(function (a) {
+        if (p.allergenTokens.indexOf('allergen-' + a.key) !== -1) {
+          tbodyHtml += '<td><span class="am-yes" title="Contains ' + esc(a.label) + '">✔</span></td>';
+        } else {
+          tbodyHtml += '<td><span class="am-no" title="Not listed: ' + esc(a.label) + '">✘</span></td>';
+        }
+      });
+      tbodyHtml += '</tr>';
+    });
+    tbodyHtml += '</tbody>';
+
+    // Mobile UI
+    var mobileHtml = '<div class="am-mobile" data-am-mobile>';
+    mobileHtml += '<div class="am-mobile-results" role="status" aria-live="polite">Showing <strong data-am-showing-mobile>0</strong> of <strong data-am-total-mobile>0</strong> items</div>';
+    mobileHtml += '<div data-am-mobile-list></div>';
+    mobileHtml += '<div style="display:none;" data-am-loadmore-mobile><div class="am-loadmore"><span class="am-loadmore-count" data-am-loadmore-count-mobile></span><div><button type="button" class="am-btn am-btn--ghost" data-am-loadmore-btn-mobile>Load more</button> <button type="button" class="am-btn am-btn--ghost" data-am-loadall-btn-mobile>Show all</button></div></div></div>';
+    mobileHtml += '<div class="am-cart-card--mobile"><h2 class="am-cart-h2">Selected items</h2><p class="am-cart-sub">Select products above, then add to basket.</p><div data-am-cart-list-mobile></div><div class="am-cart-actions"><button type="button" class="am-btn am-btn--primary" data-am-add-selected-mobile>Add selected to basket</button><button type="button" class="am-btn am-btn--ghost" data-am-clear-selected-mobile>Clear selection</button></div><div class="am-cart-status" role="status" aria-live="polite" data-am-cart-status-mobile></div></div>';
+    mobileHtml += '</div>';
+
+    // Desktop layout
+    var desktopHtml = '<div class="am-layout" data-am-desktop>';
+    desktopHtml += '<div class="am-table-card">';
+    desktopHtml += '<div class="am-scroll-hint">Swipe or scroll sideways to see all allergen columns →</div>';
+    desktopHtml += '<div class="am-results-bar" role="status" aria-live="polite">Showing <strong data-am-showing>0</strong> of <strong data-am-total>0</strong> items</div>';
+    desktopHtml += '<div class="am-table-wrap"><table class="am-table">' + theadHtml + tbodyHtml + '</table>';
+    desktopHtml += '<div style="display:none;" data-am-loadmore-wrap><div class="am-loadmore"><span class="am-loadmore-count" data-am-loadmore-count></span><div><button type="button" class="am-btn am-btn--ghost" data-am-loadmore-btn>Load more</button> <button type="button" class="am-btn am-btn--ghost" data-am-loadall-btn>Show all</button></div></div></div>';
+    desktopHtml += '</div></div>';
+    desktopHtml += '<aside class="am-cart-sidebar"><h2 class="am-cart-h2">Selected items</h2><p class="am-cart-sub">Tick products to build a shortlist, then add to basket.</p><div data-am-cart-list></div><div class="am-cart-actions" style="margin-top:14px;display:flex;gap:10px;flex-direction:column;"><button type="button" class="am-btn am-btn--primary" data-am-add-selected>Add selected to basket</button><button type="button" class="am-btn am-btn--ghost" data-am-clear-selected>Clear selection</button></div><div class="am-cart-status" role="status" aria-live="polite" data-am-cart-status></div><p class="am-cart-note">If you need help with severe allergies, please contact us before ordering.</p></aside>';
+    desktopHtml += '</div>';
+
+    dynEl.innerHTML = filterBlockHtml + legendHtml + mobileHtml + desktopHtml;
+
+    // ─── Wire up interactivity ─────────────────────────────────────────────
+    var withoutInputs = Array.prototype.slice.call(root.querySelectorAll('.am-without'));
+    var tagInputs = Array.prototype.slice.call(root.querySelectorAll('.am-tag'));
+    var onlyMatchInput = root.querySelector('.am-only-match');
+    var clearFiltersBtn = root.querySelector('[data-am-clear-filters]');
+    var tableBody = root.querySelector('[data-am-tbody]');
+    var tableRows = tableBody ? Array.prototype.slice.call(tableBody.querySelectorAll('tr.am-table-row')) : [];
+
+    var resultsShowing = root.querySelector('[data-am-showing]');
+    var resultsTotal = root.querySelector('[data-am-total]');
+    var resultsShowingMobile = root.querySelector('[data-am-showing-mobile]');
+    var resultsTotalMobile = root.querySelector('[data-am-total-mobile]');
+
+    var loadMoreWrap = root.querySelector('[data-am-loadmore-wrap]');
+    var loadMoreBtn = root.querySelector('[data-am-loadmore-btn]');
+    var loadAllBtn = root.querySelector('[data-am-loadall-btn]');
+    var loadMoreCount = root.querySelector('[data-am-loadmore-count]');
+    var loadMoreWrapMobile = root.querySelector('[data-am-loadmore-mobile]');
+    var loadMoreBtnMobile = root.querySelector('[data-am-loadmore-btn-mobile]');
+    var loadAllBtnMobile = root.querySelector('[data-am-loadall-btn-mobile]');
+    var loadMoreCountMobile = root.querySelector('[data-am-loadmore-count-mobile]');
+
+    var cartListEl = root.querySelector('[data-am-cart-list]');
+    var cartListElMobile = root.querySelector('[data-am-cart-list-mobile]');
+    var addSelectedBtn = root.querySelector('[data-am-add-selected]');
+    var addSelectedBtnMobile = root.querySelector('[data-am-add-selected-mobile]');
+    var clearSelectedBtn = root.querySelector('[data-am-clear-selected]');
+    var clearSelectedBtnMobile = root.querySelector('[data-am-clear-selected-mobile]');
+    var cartStatusEl = root.querySelector('[data-am-cart-status]');
+    var cartStatusElMobile = root.querySelector('[data-am-cart-status-mobile]');
+    var mobileListEl = root.querySelector('[data-am-mobile-list]');
+
+    var BATCH_SIZE = 25;
+    var revealed = BATCH_SIZE;
+    var selected = {};
+    var isAdding = false;
+
+    function rowTags(row) { return (row.getAttribute('data-tags') || '').toLowerCase(); }
+    function getActiveWithout() { return withoutInputs.filter(function(i){return i.checked;}).map(function(i){return(i.getAttribute('data-allergen')||'').toLowerCase();}); }
+    function getActiveTags() { return tagInputs.filter(function(i){return i.checked;}).map(function(i){return(i.getAttribute('data-tag')||'').toLowerCase();}); }
+    function getFilteredRows() { return tableRows.filter(function(r){return r.style.display!=='none';}); }
+    function getRevealedRows() { return tableRows.filter(function(r){return r.style.display!=='none'&&!r.classList.contains('am-row-hidden');}); }
+
+    function setStatus(msg) { if(cartStatusEl)cartStatusEl.textContent=msg||''; if(cartStatusElMobile)cartStatusElMobile.textContent=msg||''; }
+    function setAddDisabled(v) { if(addSelectedBtn)addSelectedBtn.disabled=!!v; if(addSelectedBtnMobile)addSelectedBtnMobile.disabled=!!v; }
+
+    function updateResultsUI() {
+      var f=getFilteredRows().length; var s=getRevealedRows().length;
+      if(resultsShowing)resultsShowing.textContent=String(s);
+      if(resultsTotal)resultsTotal.textContent=String(f);
+      if(resultsShowingMobile)resultsShowingMobile.textContent=String(s);
+      if(resultsTotalMobile)resultsTotalMobile.textContent=String(f);
+    }
+
+    function updateLoadMoreUI() {
+      var f=getFilteredRows().length; var s=getRevealedRows().length; var canMore=revealed<f;
+      if(loadMoreWrap)loadMoreWrap.style.display=(f>BATCH_SIZE&&canMore)?'':'none';
+      if(loadMoreCount)loadMoreCount.textContent='Showing '+s+' of '+f+' items';
+      if(loadMoreBtn)loadMoreBtn.disabled=!canMore;
+      if(loadAllBtn)loadAllBtn.disabled=(f===0)||(revealed>=f);
+      if(loadMoreWrapMobile)loadMoreWrapMobile.style.display=(f>BATCH_SIZE&&canMore)?'':'none';
+      if(loadMoreCountMobile)loadMoreCountMobile.textContent='Showing '+s+' of '+f+' items';
+      if(loadMoreBtnMobile)loadMoreBtnMobile.disabled=!canMore;
+      if(loadAllBtnMobile)loadAllBtnMobile.disabled=(f===0)||(revealed>=f);
+    }
+
+    function applyReveal() {
+      var f=getFilteredRows();
+      f.forEach(function(row,idx){row.classList.toggle('am-row-hidden',idx>=revealed);});
+      updateLoadMoreUI(); updateResultsUI(); renderMobileCards();
+    }
+    function resetReveal(){revealed=BATCH_SIZE;applyReveal();}
+    function revealMore(){var f=getFilteredRows().length;revealed=Math.min(f,revealed+BATCH_SIZE);applyReveal();}
+    function revealAll(){revealed=getFilteredRows().length;applyReveal();}
+
+    function applyFilters() {
+      var without=getActiveWithout();
+      var tags=getActiveTags();
+      var onlyMatch=!!(onlyMatchInput&&onlyMatchInput.checked);
+      var hasActive=without.length>0||tags.length>0;
+
+      tableRows.forEach(function(row){
+        var t=rowTags(row);
+        var matchesWithout=without.every(function(k){return t.indexOf('allergen-'+k)===-1;});
+        var matchesTags=tags.every(function(k){return t.indexOf(k)!==-1;});
+        var show=true;
+        if(without.length>0&&!matchesWithout)show=false;
+        if(onlyMatch&&tags.length>0&&!matchesTags)show=false;
+        row.style.display=show?'':'none';
+        if(!show)row.classList.remove('am-row-hidden');
+      });
+
+      if(hasActive){revealAll();}else{resetReveal();}
+    }
+
+    function clearFilters(){
+      withoutInputs.forEach(function(i){i.checked=false;});
+      tagInputs.forEach(function(i){i.checked=false;});
+      if(onlyMatchInput)onlyMatchInput.checked=true;
+      applyFilters();
+    }
+
+    function renderSelectedInto(el){
+      if(!el)return;
+      var keys=Object.keys(selected);
+      if(keys.length===0){el.innerHTML='<div class="am-cart-empty">No items selected yet.</div>';return;}
+      var html='';
+      keys.forEach(function(pid){
+        var item=selected[pid];var qty=Number(item&&item.qty?item.qty:1);
+        html+='<div class="am-cart-row" data-am-cart-row="'+esc(pid)+'"><a class="am-cart-link" href="'+esc(item.url||'#')+'">'+esc(item.title||'Item')+'</a><div class="am-qty"><button type="button" class="am-qty-btn" data-am-dec="'+esc(pid)+'">−</button><span class="am-qty-val">'+qty+'</span><button type="button" class="am-qty-btn" data-am-inc="'+esc(pid)+'">+</button></div></div>';
+      });
+      el.innerHTML=html;
+      Array.prototype.slice.call(el.querySelectorAll('[data-am-inc]')).forEach(function(btn){
+        btn.addEventListener('click',function(){var pid=btn.getAttribute('data-am-inc');if(!pid||!selected[pid])return;selected[pid].qty=Number(selected[pid].qty||1)+1;renderSelected();setStatus('');});
+      });
+      Array.prototype.slice.call(el.querySelectorAll('[data-am-dec]')).forEach(function(btn){
+        btn.addEventListener('click',function(){var pid=btn.getAttribute('data-am-dec');if(!pid||!selected[pid])return;var next=Number(selected[pid].qty||1)-1;
+          if(next<=0){delete selected[pid];tableRows.forEach(function(r){if(r.getAttribute('data-product-id')===pid){var cb=r.querySelector('.am-row-select');if(cb)cb.checked=false;}});}else{selected[pid].qty=next;}
+          renderSelected();setStatus('');});
+      });
+    }
+
+    function renderSelected(){renderSelectedInto(cartListEl);renderSelectedInto(cartListElMobile);}
+
+    function clearSelection(){
+      selected={};
+      tableRows.forEach(function(row){var cb=row.querySelector('.am-row-select');if(cb)cb.checked=false;});
+      renderSelected();renderMobileCards();setStatus('');
+    }
+
+    function addSelectedToCart(){
+      if(isAdding)return;
+      // For theme extension, we use variant IDs if available, otherwise skip cart
+      // Products need variant IDs — we'll use the productId lookup from Shopify's product JSON
+      var pids=Object.keys(selected);
+      if(pids.length===0){setStatus('Please select at least one item.');return;}
+      isAdding=true;setAddDisabled(true);setStatus('Adding items to basket…');
+      // Resolve variant IDs using Shopify product JSON endpoint
+      var resolved=[];var pending=pids.length;
+      function tryAdd(){
+        if(resolved.length===0){setStatus('Could not resolve product variants.');isAdding=false;setAddDisabled(false);return;}
+        var idx=0;
+        function addNext(){
+          if(idx>=resolved.length){setStatus('Added to basket. You can continue shopping.');clearSelection();isAdding=false;setAddDisabled(false);return;}
+          var item=resolved[idx];idx++;
+          fetch('/cart/add.js',{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify({id:Number(item.variantId),quantity:item.qty})})
+          .then(function(r){if(!r.ok)throw new Error('Failed');return r.json();}).then(function(){addNext();}).catch(function(){setStatus('Some items could not be added. Please try again.');isAdding=false;setAddDisabled(false);});
+        }
+        addNext();
+      }
+      pids.forEach(function(pid){
+        var numericId=pid.replace(/^gid:\/\/shopify\/Product\//,'');
+        fetch('/products/'+numericId+'.js')
+        .then(function(r){return r.json();})
+        .then(function(json){
+          if(json&&json.variants&&json.variants[0]){
+            resolved.push({variantId:json.variants[0].id,qty:Number((selected[pid]&&selected[pid].qty)||1)});
+          }
+          pending--;if(pending===0)tryAdd();
+        })
+        .catch(function(){pending--;if(pending===0)tryAdd();});
+      });
+    }
+
+    function renderMobileCards(){
+      if(!mobileListEl)return;
+      var html='';var count=0;
+      tableRows.forEach(function(row){
+        if(row.style.display==='none'||row.classList.contains('am-row-hidden'))return;
+        var pid=row.getAttribute('data-product-id')||'';
+        var title=row.getAttribute('data-title')||'';
+        var url=row.getAttribute('data-url')||'#';
+        var tags=rowTags(row);
+        var allergenText=getAllergenText(tags);
+        var hasAllergens=allergenText!=='No major allergens listed';
+        var checked=!!(pid&&selected[pid]);count++;
+        html+='<div class="am-mcard"><div class="am-mcard-top"><label class="am-mcard-select"><input type="checkbox" class="am-mcard-cb" '+(checked?'checked':'')+' data-am-mcard-cb="'+esc(pid)+'"><span>Select</span></label><a class="am-mcard-title" href="'+esc(url)+'">'+esc(title)+'</a></div><div class="'+(hasAllergens?'am-mcard-allergens':'am-mcard-allergens--none')+'">'+esc(allergenText)+'</div></div>';
+      });
+      if(count===0)html='<div class="am-mobile-empty">No items match your filters.</div>';
+      mobileListEl.innerHTML=html;
+      Array.prototype.slice.call(mobileListEl.querySelectorAll('.am-mcard-cb')).forEach(function(cb){
+        cb.addEventListener('change',function(){
+          var pid=cb.getAttribute('data-am-mcard-cb')||'';if(!pid)return;
+          for(var i=0;i<tableRows.length;i++){var row=tableRows[i];
+            if(row.getAttribute('data-product-id')===pid){var tcb=row.querySelector('.am-row-select');if(tcb){tcb.checked=cb.checked;tcb.dispatchEvent(new Event('change',{bubbles:true}));}break;}}
+        });
+      });
+    }
+
+    // Wire checkboxes
+    withoutInputs.forEach(function(i){i.addEventListener('change',applyFilters);});
+    tagInputs.forEach(function(i){i.addEventListener('change',applyFilters);});
+    if(onlyMatchInput)onlyMatchInput.addEventListener('change',applyFilters);
+    if(clearFiltersBtn)clearFiltersBtn.addEventListener('click',clearFilters);
+    if(loadMoreBtn)loadMoreBtn.addEventListener('click',revealMore);
+    if(loadAllBtn)loadAllBtn.addEventListener('click',revealAll);
+    if(loadMoreBtnMobile)loadMoreBtnMobile.addEventListener('click',function(e){e.preventDefault();revealMore();});
+    if(loadAllBtnMobile)loadAllBtnMobile.addEventListener('click',function(e){e.preventDefault();revealAll();});
+    if(clearSelectedBtn)clearSelectedBtn.addEventListener('click',clearSelection);
+    if(clearSelectedBtnMobile)clearSelectedBtnMobile.addEventListener('click',clearSelection);
+    if(addSelectedBtn)addSelectedBtn.addEventListener('click',function(e){e.preventDefault();addSelectedToCart();});
+    if(addSelectedBtnMobile)addSelectedBtnMobile.addEventListener('click',function(e){e.preventDefault();addSelectedToCart();});
+
+    // Row selection
+    tableRows.forEach(function(row){
+      var cb=row.querySelector('.am-row-select');if(!cb)return;
+      cb.addEventListener('change',function(){
+        var pid=row.getAttribute('data-product-id')||'';if(!pid)return;
+        if(cb.checked){selected[pid]={title:row.getAttribute('data-title')||'',url:row.getAttribute('data-url')||'',qty:1};}else{delete selected[pid];}
+        renderSelected();renderMobileCards();setStatus('');
+      });
+    });
+
+    renderSelected();
+    applyFilters();
+  }
+
+  // ─── Fetch allergen data from app backend ──────────────────────────────────
+  var endpoint = apiUrl
+    ? (apiUrl.replace(/\/$/, '') + '/api/public/allergens/' + encodeURIComponent(shop))
+    : null;
+
+  if (!endpoint) {
+    dynEl.innerHTML = '<div class="am-error">Allergen Matrix app is not configured. Please set the API URL in the block settings.</div>';
+    return;
+  }
+
+  fetch(endpoint)
+    .then(function (r) {
+      if (!r.ok) throw new Error('API error ' + r.status);
+      return r.json();
+    })
+    .then(function (data) {
+      initMatrix(data);
+    })
+    .catch(function (err) {
+      console.error('[AllergenMatrix] fetch error:', err);
+      dynEl.innerHTML = '<div class="am-error">Could not load allergen data. Please try refreshing the page.</div>';
+    });
+
+})();
+</script>
+
+{% schema %}
+{
+  "name": "Allergen Matrix",
+  "target": "section",
+  "settings": [
+    {
+      "type": "text",
+      "id": "api_url",
+      "label": "App Backend URL",
+      "info": "The URL of your Allergen Matrix app backend (e.g. https://your-app.railway.app). Set automatically on install."
+    },
+    {
+      "type": "text",
+      "id": "page_title",
+      "label": "Page Title",
+      "default": "Allergen Guide",
+      "info": "Main heading shown on the allergen matrix page"
+    },
+    {
+      "type": "textarea",
+      "id": "page_intro",
+      "label": "Page Introduction",
+      "default": "Use this guide to check which allergens are present in each product and filter for options that suit your needs.",
+      "info": "Intro paragraph shown below the page title"
+    },
+    {
+      "type": "textarea",
+      "id": "warning_message",
+      "label": "Allergen Warning Message",
+      "default": "We follow strict allergen controls and clear ingredient labelling. If you have a severe allergy or multiple allergens, please contact us before ordering so we can confirm the best options for you.",
+      "info": "Shown in the Important card"
+    },
+    {
+      "type": "textarea",
+      "id": "beyond14_message",
+      "label": "Beyond 14 Allergens Message",
+      "default": "If you react to ingredients beyond the 14 major allergens (for example: onion, garlic, coconut, banana, or spices), please contact us before ordering.",
+      "info": "Shown in the Beyond 14 allergens card"
+    },
+    {
+      "type": "color",
+      "id": "brand_color",
+      "label": "Brand Colour",
+      "default": "#309B42",
+      "info": "Primary colour used for buttons and highlights"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_dietary_filters",
+      "label": "Show dietary preference filters",
+      "default": true
+    },
+    {
+      "type": "checkbox",
+      "id": "show_add_to_basket",
+      "label": "Show Add to Basket feature",
+      "default": true,
+      "info": "Allows customers to select and bulk-add products to their basket"
+    }
+  ],
+  "presets": [
+    {
+      "name": "Allergen Matrix",
+      "settings": {
+        "page_title": "Allergen Guide",
+        "brand_color": "#309B42"
+      }
+    }
+  ]
+}
+{% endschema %}

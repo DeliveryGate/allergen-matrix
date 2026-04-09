@@ -1,0 +1,58 @@
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Session {
+  id          String    @id
+  shop        String
+  state       String
+  isOnline    Boolean   @default(false)
+  scope       String?
+  expires     DateTime?
+  accessToken String
+  userId      BigInt?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model MerchantPlan {
+  id               String   @id @default(cuid())
+  shop             String   @unique
+  plan             String   @default("free")
+  subscriptionId   String?
+  warningMessage   String   @default("")
+  beyond14Message  String   @default("")
+  pageTitle        String   @default("")
+  pageIntro        String   @default("")
+  brandColor       String   @default("#309B42")
+  enabledAllergens String   @default("[]")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model ProductAllergen {
+  id           String   @id @default(cuid())
+  shop         String
+  productId    String
+  productTitle String
+  allergens    String   @default("{}")
+  dietary      String   @default("{}")
+  suitableFor  String   @default("")
+  updatedAt    DateTime @updatedAt
+
+  @@unique([shop, productId])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  shop      String
+  action    String
+  details   String   @db.Text
+  createdAt DateTime @default(now())
+}
